@@ -7,10 +7,10 @@ import torchvision
 from torchvision.transforms import ToTensor, Compose, RandomRotation, RandomResizedCrop
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data
-from torch_geometric.nn import GCNConv, global_mean_pool, GATConv
 import torch.nn as nn
-import torch.nn.functional as F
-import matplotlib.pyplot as plt
+
+from gnn_models import GCN_Net1, GCN_Net2
+from utils import plot_metrics
 
 print(f"Cuda availability = {torch.cuda.is_available()}")
 print(f"Number of GPUs = {torch.cuda.device_count()}")
@@ -46,7 +46,7 @@ def img2graph(image):
     rows, cols = image.size()
 
     # node features     
-    x = image.view(-1, 1)  # number of node features = 1 
+    x = image.view(-1, 1).float()  # number of node features = 1 
 
     # edges features
     edge_index = []
@@ -91,8 +91,12 @@ def img2graph(image):
     return Data(x=x, edge_index=edge_index)
 
 print("Begin converting the images to graphs: ")
-train_graphs = [img2graph(img_pair[0]) for img_pair in trainset]
-test_graphs = [img2graph(img_pair[0]) for img_pair in testset]
+# only use the first 600 images for training and the first 100 images for testing
+# subset_trainset = [(trainset.data[i], trainset.targets[i]) for i in range(600)]
+# subset_testset = [(testset.data[i], testset.targets[i]) for i in range(100)]
+
+train_graphs = [img2graph(img_pair[0]) for img_pair in tqdm(trainset)]
+test_graphs = [img2graph(img_pair[0]) for img_pair in tqdm(testset)]
 
 print("Begin assigning the labels to graphs: ")
 for i, g in enumerate(train_graphs):
@@ -105,76 +109,11 @@ print("Begin creating the PyG Dataloader: ")
 train_loader = DataLoader(train_graphs, batch_size=128, shuffle=True)
 test_loader = DataLoader(test_graphs, batch_size=128, shuffle=False) 
 
-# GCN Arch -- equivalent to CNN Net1 
-class GCN_Net1(nn.Module):
-    def __init__(self):
-        super(GCN_Net1, self).__init__()
-        self.gconv1 = GCNConv(1, 64)
-        self.gconv2 = GCNConv(64, 64)
-        self.gconv3 = GCNConv(64, 64)
-        self.gconv4 = GCNConv(64, 64)
-        self.fc1 = nn.Linear(64, 128, bias=True)
-        self.fc2 = nn.Linear(128, 10, bias=True)
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(64)
-        self.bn3 = nn.BatchNorm1d(64)
-        self.bn4 = nn.BatchNorm1d(64)
-        # self.dropout = nn.Dropout(p=0.5)
-
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index 
-        x = F.relu(self.bn1(self.gconv1(x, edge_index)))  # add BatchNorm1d 
-        x = F.relu(self.bn2(self.gconv2(x, edge_index)))  # add BatchNorm1d 
-        x = F.relu(self.bn3(self.gconv3(x, edge_index)))  # add BatchNorm1d 
-        x = F.relu(self.bn4(self.gconv4(x, edge_index)))  # add BatchNorm1d 
-        x = global_mean_pool(x, data.batch)
-        # x = self.dropout(x)  # add dropout layer
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
-
-# class GAT(nn.Module):
-#     def __init__(self):
-#         super(GAT, self).__init__():
-#         self.gconv1 = 
-
-# plot the loss curve and accuracies
-def plot_metrics(train_losses, train_accuracies, test_accuracies):
-    epochs = range(1, len(train_losses) + 1)
-    
-    plt.figure(figsize=(12, 4))
-    
-    # Plot loss
-    plt.subplot(1, 3, 1)
-    plt.plot(epochs, train_losses, 'bo-', label='Train loss')
-    plt.title('Training loss')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.legend()
-    
-    # Plot train accuracy
-    plt.subplot(1, 3, 2)
-    plt.plot(epochs, train_accuracies, 'go-', label='Train accuracy')
-    plt.title('Training accuracy')
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.legend()
-    
-    # Plot test accuracy
-    plt.subplot(1, 3, 3)
-    plt.plot(epochs, test_accuracies, 'ro-', label='Test accuracy')
-    plt.title('Test accuracy')
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.savefig('./loss_curve_gnn_mnist.png', dpi=300, bbox_inches='tight', pad_inches=0.1)
 
 def train_eval(model):
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
     
     train_losses = []
     train_accuracies = []
@@ -222,11 +161,11 @@ def train_eval(model):
         test_accuracies.append(test_acc) 
     
     # Plot metrics
-    plot_metrics(train_losses, train_accuracies, test_accuracies)
+    plot_metrics('expt_dropout_90', train_losses, train_accuracies, test_accuracies)
 
 
 print('Begin training: ')
-model = GCN_Net1().to(device)
+model = GCN_Net2().to(device)
 train_eval(model)
 
 print('All training was done!')
