@@ -9,7 +9,7 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data
 import torch.nn as nn
 
-from gnn_models import GCN_Net1, GCN_Net2
+from gnn_models import GCN_Net1, GCN_Net2, GCN_Net3
 from utils import plot_metrics
 
 print(f"Cuda availability = {torch.cuda.is_available()}")
@@ -161,11 +161,11 @@ def train_eval(model):
         test_accuracies.append(test_acc) 
     
     # Plot metrics
-    plot_metrics('expt_dropout_90', train_losses, train_accuracies, test_accuracies)
+    plot_metrics('expt_ModifiedGCNConv', train_losses, train_accuracies, test_accuracies)
 
 
 print('Begin training: ')
-model = GCN_Net2().to(device)
+model = GCN_Net3(in_channels=1, out_channels=10, hidden_channels=64, num_layers=4).to(device)
 train_eval(model)
 
 print('All training was done!')

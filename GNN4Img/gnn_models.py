@@ -7,6 +7,29 @@ import torch.nn.functional as F
 from torch_geometric.nn import MessagePassing
 from torch_geometric.utils import add_self_loops, degree
 
+class ModifiedGCNConv(GCNConv):
+    def __init__(self, in_channels, out_channels=64, stride=1, padding=0, **kwargs):
+        super(ModifiedGCNConv, self).__init__(in_channels, out_channels, **kwargs)
+        self.stride = stride
+        self.padding = padding
+
+    def forward(self, x, edge_index):
+        if self.padding > 0:
+            x = torch.nn.functional.pad(x, (self.padding, self.padding))
+        
+        if self.stride > 1:
+            edge_index = self.downsample(edge_index, self.stride)
+        
+        x = super(ModifiedGCNConv, self).forward(x, edge_index)
+        
+        return x
+
+    def downsample(self, edge_index, stride):
+        # Only keep every stride-th node
+        row, col = edge_index
+        mask = torch.arange(row.size(0), device=row.device) % stride == 0
+        return row[mask], col[mask]
+
 
 class CustomGCNConv(MessagePassing):
     def __init__(self, in_channels, out_channels, kernel_size=3):
@@ -67,6 +90,24 @@ class CustomGCNConv(MessagePassing):
         kwargs['edge_index'] = edge_index
         return super().propagate(**kwargs)
 
+class GCN_Net3(nn.Module):
+    def __init__(self, in_channels, out_channels, hidden_channels, num_layers):
+        super(GCN_Net3, self).__init__()
+        self.gconvs = nn.ModuleList([ModifiedGCNConv(in_channels, hidden_channels)])
+        self.gconvs.extend([ModifiedGCNConv(hidden_channels, hidden_channels) for _ in range(num_layers - 1)])
+        self.fc1 = nn.Linear(hidden_channels, 128, bias=True)
+        self.fc2 = nn.Linear(128, out_channels, bias=True)
+        self.bns = nn.ModuleList([nn.BatchNorm1d(hidden_channels) for _ in range(num_layers)])
+        self.bn1 = nn.BatchNorm1d(128)
+
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+        for gconv, bn in zip(self.gconvs, self.bns):
+            x = F.relu(bn(gconv(x, edge_index)))
+        x = global_mean_pool(x, data.batch)
+        x = F.relu(self.bn1(self.fc1(x)))
+        x = self.fc2(x)
+        return x
 
 class GCN_Net2(nn.Module):
     def __init__(self):
@@ -94,7 +135,6 @@ class GCN_Net2(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
-
 
 class GCN_Net1(nn.Module):
     def __init__(self):
