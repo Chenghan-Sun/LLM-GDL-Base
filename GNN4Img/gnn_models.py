@@ -7,29 +7,47 @@ import torch.nn.functional as F
 from torch_geometric.nn import MessagePassing
 from torch_geometric.utils import add_self_loops, degree
 
+
 class ModifiedGCNConv(GCNConv):
-    def __init__(self, in_channels, out_channels=64, stride=1, padding=0, **kwargs):
+    def __init__(self, in_channels, out_channels, stride=1, **kwargs):
         super(ModifiedGCNConv, self).__init__(in_channels, out_channels, **kwargs)
         self.stride = stride
-        self.padding = padding
 
-    def forward(self, x, edge_index):
-        if self.padding > 0:
-            x = torch.nn.functional.pad(x, (self.padding, self.padding))
-        
-        if self.stride > 1:
-            edge_index = self.downsample(edge_index, self.stride)
-        
+    def forward(self, x, edge_index, batch):
+        # print(f"  Input to ModifiedGCNConv - x: {x.shape}, edge_index: {edge_index.shape}, batch: {batch.shape}")
+
         x = super(ModifiedGCNConv, self).forward(x, edge_index)
-        
-        return x
+        # print(f"  After GCNConv - x: {x.shape}")
 
-    def downsample(self, edge_index, stride):
-        # Only keep every stride-th node
-        row, col = edge_index
-        mask = torch.arange(row.size(0), device=row.device) % stride == 0
-        return row[mask], col[mask]
+        if self.stride > 1:
+            original_num_nodes = x.size(0)
+            num_nodes = (original_num_nodes + self.stride - 1) // self.stride  # Ceiling division
+            pad_size = num_nodes * self.stride - original_num_nodes
+            if pad_size > 0:
+                pad_x = torch.zeros(pad_size, x.size(1)).to(x.device)
+                x = torch.cat([x, pad_x], dim=0)
+                pad_batch = torch.full((pad_size,), batch.max() + 1, dtype=torch.long).to(batch.device)
+                batch = torch.cat([batch, pad_batch], dim=0)
+                # print(f"  After stride padding - x: {x.shape}, batch: {batch.shape}")
 
+            x = x.view(-1, self.stride, x.size(1)).mean(dim=1)  # Downsample nodes by stride
+            batch = batch[::self.stride]  # Downsample batch tensor by stride
+            num_nodes = x.size(0)
+
+            mask = (edge_index[0] % self.stride == 0) & (edge_index[1] % self.stride == 0)
+            edge_index = edge_index[:, mask]
+            edge_index = edge_index // self.stride
+
+            valid_mask = (edge_index[0] < num_nodes) & (edge_index[1] < num_nodes)
+            edge_index = edge_index[:, valid_mask]
+
+            # print(f"  After stride - x: {x.shape}, edge_index: {edge_index.shape}, batch: {batch.shape}")
+
+        assert x.size(1) == self.out_channels, \
+            f"  Output dimension mismatch: expected {self.out_channels}, got {x.size(1)}"
+        # print(f"  Output from ModifiedGCNConv - x: {x.shape}")
+
+        return x, edge_index, batch
 
 class CustomGCNConv(MessagePassing):
     def __init__(self, in_channels, out_channels, kernel_size=3):
@@ -91,23 +109,58 @@ class CustomGCNConv(MessagePassing):
         return super().propagate(**kwargs)
 
 class GCN_Net3(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_channels, num_layers):
+    def __init__(self):
         super(GCN_Net3, self).__init__()
-        self.gconvs = nn.ModuleList([ModifiedGCNConv(in_channels, hidden_channels)])
-        self.gconvs.extend([ModifiedGCNConv(hidden_channels, hidden_channels) for _ in range(num_layers - 1)])
-        self.fc1 = nn.Linear(hidden_channels, 128, bias=True)
-        self.fc2 = nn.Linear(128, out_channels, bias=True)
-        self.bns = nn.ModuleList([nn.BatchNorm1d(hidden_channels) for _ in range(num_layers)])
-        self.bn1 = nn.BatchNorm1d(128)
+        self.gconv1 = ModifiedGCNConv(1, 64, stride=2)
+        self.gconv2 = ModifiedGCNConv(64, 64, stride=2)
+        self.gconv3 = ModifiedGCNConv(64, 64, stride=2)
+        self.gconv4 = ModifiedGCNConv(64, 64, stride=2)
+        self.fc1 = nn.Linear(64, 128, bias=True)
+        self.fc2 = nn.Linear(128, 10, bias=True)
+        self.bn1 = nn.BatchNorm1d(64)
+        self.bn2 = nn.BatchNorm1d(64)
+        self.bn3 = nn.BatchNorm1d(64)
+        self.bn4 = nn.BatchNorm1d(64)
 
     def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        for gconv, bn in zip(self.gconvs, self.bns):
-            x = F.relu(bn(gconv(x, edge_index)))
-        x = global_mean_pool(x, data.batch)
-        x = F.relu(self.bn1(self.fc1(x)))
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+        # print(f"Initial input - x: {x.shape}, edge_index: {edge_index.shape}, batch: {batch.shape}")
+
+        x, edge_index, batch = self.gconv1(x, edge_index, batch)
+        x = F.relu(self.bn1(x))
+        # print(f"After gconv1 - x: {x.shape}, edge_index: {edge_index.shape}, batch: {batch.shape}")
+
+        x, edge_index, batch = self.gconv2(x, edge_index, batch)
+        x = F.relu(self.bn2(x))
+        # print(f"After gconv2 - x: {x.shape}, edge_index: {edge_index.shape}, batch: {batch.shape}")
+
+        x, edge_index, batch = self.gconv3(x, edge_index, batch)
+        x = F.relu(self.bn3(x))
+        # print(f"After gconv3 - x: {x.shape}, edge_index: {edge_index.shape}, batch: {batch.shape}")
+
+        x, edge_index, batch = self.gconv4(x, edge_index, batch)
+        x = F.relu(self.bn4(x))
+        # print(f"After gconv4 - x: {x.shape}, edge_index: {edge_index.shape}, batch: {batch.shape}")
+
+        assert x.size(1) == 64, f"Output dimension mismatch: expected 64, got {x.size(1)}"
+
+        # Ensure unique and sequential batch indices
+        unique_batch = torch.unique(batch)
+        new_batch = torch.arange(unique_batch.size(0), device=batch.device).repeat_interleave(torch.bincount(batch))
+        # print(f"After remapping batch indices - new_batch: {new_batch.shape}")
+
+        # Perform global mean pooling
+        x = global_mean_pool(x, new_batch)
+        # print(f"After global mean pool - x: {x.shape}")
+
+        x = F.relu(self.fc1(x))
+        # print(f"After fc1 - x: {x.shape}")
+
         x = self.fc2(x)
+        # print(f"After fc2 - x: {x.shape}")
+
         return x
+
 
 class GCN_Net2(nn.Module):
     def __init__(self):
