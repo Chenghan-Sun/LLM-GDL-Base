@@ -10,7 +10,7 @@ from torch_geometric.data import Data
 import torch.nn as nn
 
 from gnn_models import GCN_Net1, GCN_Net2, GCN_Net3
-from utils import plot_metrics
+from utils import plot_metrics, EarlyStopping
 
 print(f"Cuda availability = {torch.cuda.is_available()}")
 print(f"Number of GPUs = {torch.cuda.device_count()}")
@@ -114,12 +114,13 @@ def train_eval(model):
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+    # early_stopping = EarlyStopping(patience=30, delta=0.01)  # EarlyStopping instance
     
     train_losses = []
     train_accuracies = []
     test_accuracies = []
 
-    for epoch in range(100):
+    for epoch in range(300):
         # Training
         model.train()
         train_total = 0
@@ -145,23 +146,34 @@ def train_eval(model):
         model.eval()
         total = 0
         correct = 0
+        # val_loss = 0
         with torch.no_grad():
             for data in test_loader:
                 data = data.to(device)
                 outputs = model(data)
+                # loss = criterion(outputs, data.y)
+                # val_loss += loss.item()
                 _, predicted = torch.max(outputs.data, 1)
                 total += data.y.size(0)
                 correct += (predicted == data.y).sum().item()
 
         test_acc = correct / total
+        # val_loss /= len(test_loader)
 
         print(f'Epoch {epoch+1}: Train Loss: {train_loss/len(train_loader):.4f}, Train Accuracy: {train_acc:.4f}, Test Accuracy: {test_acc:.4f}')
         train_losses.append(train_loss)
         train_accuracies.append(train_acc)
         test_accuracies.append(test_acc) 
+
+        # Check early stopping condition
+        # early_stopping(val_loss, model)
+        # if early_stopping.early_stop:
+        #     print("Early stopping")
+        #     model.load_state_dict(torch.load('checkpoint.pt'))
+        #     break
     
     # Plot metrics
-    plot_metrics('expt_MGCNConvNet3_stripad', train_losses, train_accuracies, test_accuracies)
+    plot_metrics('expt_MGCNConvNet3_trial6', train_losses, train_accuracies, test_accuracies)
 
 
 print('Begin training: ')
