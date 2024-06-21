@@ -10,5 +10,11 @@ Pytorchに基づいたプロジェクトを実践する
     - CNN Net2: CNN Net1 with BatchNorm 
     - CNN Net3: CNN Net2 with ResNet
 - Results:
+  - Performance of Modified GCNConv-Net with Stride and Padding (GCN_Net3 in gnn_model.py):
+  
+    ![Training after 300 epochs](GNN4Img/results/expt_MGCNConvNet3_trial7.png)
+    
+  - Performance of the GIN-Net (graph isomorphism operator):
+  
+    ![Training after 300 epochs](GNN4Img/results/expt_GINNet1_trial1.png)
 
-![Training after 300 epochs](GNN4Img/results/expt_MGCNConvNet3_trial5.png)
