@@ -1,12 +1,52 @@
 #!/usr/bin/env python3
 
 import torch
-from torch_geometric.nn import GCNConv, global_mean_pool, GATConv, global_add_pool
+from torch_geometric.nn import GCNConv, global_mean_pool, GINConv, global_add_pool, BatchNorm
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import MessagePassing
 from torch_geometric.utils import add_self_loops, degree
 
+class GIN_Net(nn.Module):
+    def __init__(self):
+        super(GIN_Net, self).__init__()
+        
+        # Define MLP for GINConv layers
+        nn1 = nn.Sequential(nn.Linear(1, 64), nn.ReLU(), nn.Linear(64, 64))
+        nn2 = nn.Sequential(nn.Linear(64, 64), nn.ReLU(), nn.Linear(64, 64))
+        nn3 = nn.Sequential(nn.Linear(64, 64), nn.ReLU(), nn.Linear(64, 64))
+        nn4 = nn.Sequential(nn.Linear(64, 64), nn.ReLU(), nn.Linear(64, 64))
+        
+        # Define GINConv layers with MLPs
+        self.gconv1 = GINConv(nn1)
+        self.gconv2 = GINConv(nn2)
+        self.gconv3 = GINConv(nn3)
+        self.gconv4 = GINConv(nn4)
+        
+        self.bn1 = BatchNorm(64)
+        self.bn2 = BatchNorm(64)
+        self.bn3 = BatchNorm(64)
+        self.bn4 = BatchNorm(64)
+        
+        self.fc1 = nn.Linear(64, 128, bias=True)
+        self.fc2 = nn.Linear(128, 10, bias=True)
+        
+        # self.dropout = nn.Dropout(p=0.9)
+
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+        
+        # Apply GINConv layers with BatchNorm and ReLU
+        x = F.relu(self.bn1(self.gconv1(x, edge_index)))
+        x = F.relu(self.bn2(self.gconv2(x, edge_index)))
+        x = F.relu(self.bn3(self.gconv3(x, edge_index)))
+        x = F.relu(self.bn4(self.gconv4(x, edge_index)))
+        x = global_mean_pool(x, data.batch)
+        # x = self.dropout(x)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        
+        return x
 
 class ModifiedGCNConv(GCNConv):
     def __init__(self, in_channels, out_channels, stride=1, **kwargs):
@@ -117,10 +157,10 @@ class GCN_Net3(nn.Module):
         self.gconv4 = ModifiedGCNConv(64, 64, stride=2)
         self.fc1 = nn.Linear(64, 128, bias=True)
         self.fc2 = nn.Linear(128, 10, bias=True)
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(64)
-        self.bn3 = nn.BatchNorm1d(64)
-        self.bn4 = nn.BatchNorm1d(64)
+        self.bn1 = BatchNorm(64)
+        self.bn2 = BatchNorm(64)
+        self.bn3 = BatchNorm(64)
+        self.bn4 = BatchNorm(64)
 
     def forward(self, data):
         x, edge_index, batch = data.x, data.edge_index, data.batch
@@ -171,18 +211,18 @@ class GCN_Net2(nn.Module):
         self.gconv4 = CustomGCNConv(64, 64)
         self.fc1 = nn.Linear(64, 128, bias=True)
         self.fc2 = nn.Linear(128, 10, bias=True)
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(64)
-        self.bn3 = nn.BatchNorm1d(64)
-        self.bn4 = nn.BatchNorm1d(64)
+        self.bn1 = BatchNorm(64)
+        self.bn2 = BatchNorm(64)
+        self.bn3 = BatchNorm(64)
+        self.bn4 = BatchNorm(64)
         # self.dropout = nn.Dropout(p=0.9)
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index 
-        x = F.relu(self.bn1(self.gconv1(x, edge_index)))  # add BatchNorm1d 
-        x = F.relu(self.bn2(self.gconv2(x, edge_index)))  # add BatchNorm1d 
-        x = F.relu(self.bn3(self.gconv3(x, edge_index)))  # add BatchNorm1d 
-        x = F.relu(self.bn4(self.gconv4(x, edge_index)))  # add BatchNorm1d 
+        x = F.relu(self.bn1(self.gconv1(x, edge_index)))  # add BatchNorm 
+        x = F.relu(self.bn2(self.gconv2(x, edge_index)))  # add BatchNorm 
+        x = F.relu(self.bn3(self.gconv3(x, edge_index)))  # add BatchNorm 
+        x = F.relu(self.bn4(self.gconv4(x, edge_index)))  # add BatchNorm 
         x = global_mean_pool(x, data.batch)
         # x = self.dropout(x)  # add dropout layer
         x = F.relu(self.fc1(x))
@@ -198,18 +238,18 @@ class GCN_Net1(nn.Module):
         self.gconv4 = GCNConv(64, 64)
         self.fc1 = nn.Linear(64, 128, bias=True)
         self.fc2 = nn.Linear(128, 10, bias=True)
-        self.bn1 = nn.BatchNorm1d(64)
-        self.bn2 = nn.BatchNorm1d(64)
-        self.bn3 = nn.BatchNorm1d(64)
-        self.bn4 = nn.BatchNorm1d(64)
+        self.bn1 = BatchNorm(64)
+        self.bn2 = BatchNorm(64)
+        self.bn3 = BatchNorm(64)
+        self.bn4 = BatchNorm(64)
         # self.dropout = nn.Dropout(p=0.9)
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index 
-        x = F.relu(self.bn1(self.gconv1(x, edge_index)))  # add BatchNorm1d 
-        x = F.relu(self.bn2(self.gconv2(x, edge_index)))  # add BatchNorm1d 
-        x = F.relu(self.bn3(self.gconv3(x, edge_index)))  # add BatchNorm1d 
-        x = F.relu(self.bn4(self.gconv4(x, edge_index)))  # add BatchNorm1d 
+        x = F.relu(self.bn1(self.gconv1(x, edge_index)))  # add BatchNorm 
+        x = F.relu(self.bn2(self.gconv2(x, edge_index)))  # add BatchNorm 
+        x = F.relu(self.bn3(self.gconv3(x, edge_index)))  # add BatchNorm 
+        x = F.relu(self.bn4(self.gconv4(x, edge_index)))  # add BatchNorm 
         x = global_mean_pool(x, data.batch)
         # x = self.dropout(x)  # add dropout layer
         x = F.relu(self.fc1(x))

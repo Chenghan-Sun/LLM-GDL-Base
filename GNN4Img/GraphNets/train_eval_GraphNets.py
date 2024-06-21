@@ -9,7 +9,7 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data
 import torch.nn as nn
 
-from gnn_models import GCN_Net1, GCN_Net2, GCN_Net3
+from gnn_models import GCN_Net1, GCN_Net2, GCN_Net3, GIN_Net
 from utils import plot_metrics, EarlyStopping
 
 print(f"Cuda availability = {torch.cuda.is_available()}")
@@ -161,7 +161,7 @@ def train_eval(model):
         # val_loss /= len(test_loader)
 
         print(f'Epoch {epoch+1}: Train Loss: {train_loss/len(train_loader):.4f}, Train Accuracy: {train_acc:.4f}, Test Accuracy: {test_acc:.4f}')
-        train_losses.append(train_loss)
+        train_losses.append(train_loss/len(train_loader))
         train_accuracies.append(train_acc)
         test_accuracies.append(test_acc) 
 
@@ -173,11 +173,11 @@ def train_eval(model):
         #     break
     
     # Plot metrics
-    plot_metrics('expt_MGCNConvNet3_trial6', train_losses, train_accuracies, test_accuracies)
+    plot_metrics('expt_GINNet1_trial1', train_losses, train_accuracies, test_accuracies)
 
 
 print('Begin training: ')
-model = GCN_Net3().to(device)
+model = GIN_Net().to(device)
 train_eval(model)
 
 print('All training was done!')
